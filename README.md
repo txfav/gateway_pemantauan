@@ -64,7 +64,8 @@ Web Interface use WebServer ESP32
 3. Log In Firebase
 
 ### Sensor Read and Processing Data
-- System Procces Any Data from Node
-- Send and Save Data to Firebase
+- *System Procces Any Data from Node
+- *Send and Save Data to Firebase
 
 ### Contact
+For any inquiries or issues, please contact [faisal.aviva12@gmail.com](mailto:faisal.aviva12@gmail.com).
