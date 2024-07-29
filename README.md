@@ -7,7 +7,6 @@ This project involves the use of an ESP32 microcontroller to read various sensor
 - *Sensor Reading*: Reads data from an SRF05 ultrasonic sensor and other environmental sensors.
 - *ESP-NOW Communication*: Communicates with nodes and a gateway using the ESP-NOW protocol.
 - *Firebase Integration*: Stores sensor data and retrieves configuration data from Firebase.
-- *Deep Sleep Mode*: Enters deep sleep mode to save power under certain conditions.
 - *Web Interface*: Provides a web interface for user authentication and configuration.
 - *Real-time Clock*: Syncs time using NTP for timestamping data.
 
@@ -49,3 +48,9 @@ Update the WiFi credentials in the code:
 ```cpp
 #define WIFI_SSID "Your_SSID"
 #define WIFI_PASSWORD "Your_PASSWORD"
+### Firebase Settings
+
+Update the Firebase API key and database URL in the code:
+```cpp
+#define API_KEY "Your_Firebase_API_Key"
+#define DATABASE_URL "Your_Firebase_Database_URL"
