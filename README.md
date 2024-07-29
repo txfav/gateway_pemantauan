@@ -21,7 +21,7 @@ This project involves the use of an ESP32 microcontroller to read various sensor
 
 1. *Clone the repository*
     bash
-    git clone https://github.com/yourusername/yourrepository.git
+    git clone [https://github.com/yourusername/yourrepository.git](https://github.com/txfav/gateway_pemantauan.git)
     
 
 2. *Open the project in Arduino IDE or PlatformIO*
