@@ -48,9 +48,23 @@ Update the WiFi credentials in the code:
 ```cpp
 #define WIFI_SSID "Your_SSID"
 #define WIFI_PASSWORD "Your_PASSWORD"
+```
 ### Firebase Settings
 
 Update the Firebase API key and database URL in the code:
 ```cpp
 #define API_KEY "Your_Firebase_API_Key"
 #define DATABASE_URL "Your_Firebase_Database_URL"
+```
+
+### Usage
+Web Interface use WebServer ESP32
+1. AP mode for WebServer
+2. Can acces WebInterface via ESP32's IP
+3. Log In Firebase
+
+### Sensor Read and Processing Data
+- System Procces Any Data from Node
+- Send and Save Data to Firebase
+
+### Contact
