@@ -12,10 +12,10 @@
 #include <Firebase_ESP_Client.h>
 #include <WebServer.h>
 #include <EEPROM.h>
+#include "esp_task_wdt.h"
 #include "SRF05.h"
-
-const int trigger = 27;
-const int echo    = 26;
+const int trigger = 26;
+const int echo    = 25;
 
 SRF05 SRF(trigger, echo);
 
@@ -24,17 +24,17 @@ SRF05 SRF(trigger, echo);
 
 // variabel
 bool signupOK;
-int chan, bedengan, node;
+int chan, bedengan, node, n;
 String id;
 #define MAX_NODES 10
 enum MessageType {PAIRING, DATA};
 MessageType messageType;
 
 // setting Wifi
-#define WIFI_SSID "Elkapride"
-#define WIFI_PASSWORD "ngiritbos"
-// #define WIFI_SSID "TAbawang"
-// #define WIFI_PASSWORD "bawang123"
+// #define WIFI_SSID "Elkapride"
+// #define WIFI_PASSWORD "ngiritbos"
+#define WIFI_SSID "TAbawang"
+#define WIFI_PASSWORD "bawang123"
 
 // RTOS
 TaskHandle_t DataTaskHandle = NULL;
@@ -111,6 +111,8 @@ typedef struct struct_message {
   int P;
   int K;
   float baterai;
+  double Latitude;
+  double Longitude;
 } struct_message;
 
 struct_message nodeData[MAX_NODES][MAX_NODES];
@@ -401,7 +403,6 @@ void setupFirebase() {
 
     Firebase.begin(&config, &auth);
     Firebase.reconnectWiFi(true);
-
     if (Firebase.ready()) {
       if (auth.token.uid.length() > 0) {
         Serial.println("Sign in succeeded");
@@ -484,14 +485,18 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
   switch (type) {
   case DATA :                           // the message is data type
     memcpy(&inData, incomingData, sizeof(inData));
+    Serial.print("ID: ");
+    Serial.println(inData.id);
     if(strcmp(inData.id, "-1") == 0){
-      for(int i = 0 ;i < MAX_NODES; i++){
+      Serial.println("kirim Data lokasi");
+      for(int i = 0;i < MAX_NODES; i++){
         if(nodeKapal[i].id != 0){
           nodeKapal[i].msgType = DATA;
           esp_now_send(pairingData.macAddr, (uint8_t *) &nodeKapal[i], sizeof(data_kapal));
           Serial.print("id = ");
           Serial.println(i);
         }
+        Serial.println("kosong");
       }
     }else{
       sscanf(inData.id, "%d.%d", &bedengan, &node);
@@ -584,7 +589,7 @@ bool isIt6PM() {
     return false;
   }
   // Cek apakah sekarang antara jam 18:00 dan 18:59
-  if (timeinfo.tm_hour == 21 && timeinfo.tm_min >= 30 && timeinfo.tm_min < 60) {
+  if (timeinfo.tm_hour == 18 && timeinfo.tm_min >= 0 && timeinfo.tm_min < 60) {
     return true;
   }
   return false;
@@ -812,14 +817,17 @@ void hitungAverage(int bedengan) {
     nodeData[bedengan][0].P = avgP;
     nodeData[bedengan][0].K = avgK;
     nodeData[bedengan][0].baterai = 0; // Atau set nilai yang menunjukkan data ini valid
-
+    nodeKapal[bedengan].id = bedengan;
+    nodeKapal[bedengan].humidity =  avgHumidity;
+    nodeKapal[bedengan].temperature = avgTemperature;
     // Serial.print("Bedengan ");
     // Serial.print(bedengan);
     // Serial.print(": Rata-rata Kelembaban = ");
     // Serial.print(avgHumidity);
     // Serial.print(", Rata-rata Suhu = ");
     // Serial.println(avgTemperature, 2);
-
+    updateLocData(bedengan);
+    displayAllNodeData();
     sendNodeDataToFirebase(bedengan);
   }
 }
@@ -831,7 +839,7 @@ void sendNodeDataToFirebase(int bedengan) {
 
     // Kirim data rata-rata bedengan ke Firebase
     FirebaseJson avgJson;
-    createNodeJson(avgJson, nodeData[bedengan][0]);
+    createBedenganJson(avgJson, nodeData[bedengan][0]);
     String avgPath = "/" + id + "/Data/bedengan" + String(bedengan);
     sendJsonToFirebase(avgPath, avgJson);
 
@@ -857,6 +865,23 @@ void sendNodeDataToFirebase(int bedengan) {
       }
     }
   }
+}
+
+void createBedenganJson(FirebaseJson& nodeJson, const struct_message& node) {
+  nodeJson.clear();
+  nodeJson.set("id", node.id);
+  nodeJson.set("kelembapan", node.humidity);
+  nodeJson.set("suhu", node.temperature);
+  nodeJson.set("ph", node.pH);
+  nodeJson.set("N", node.N);
+  nodeJson.set("P", node.P);
+  nodeJson.set("K", node.K);
+  nodeJson.set("latitude", node.Latitude);
+  nodeJson.set("longitude", node.Longitude);
+  nodeJson.set("baterai", node.baterai);
+  nodeJson.set("timestamp", timestamp);
+  nodeJson.set("date", formattedDate);
+  nodeJson.set("time", formattedTime);
 }
 
 void createNodeJson(FirebaseJson& nodeJson, const struct_message& node) {
@@ -891,9 +916,34 @@ void sendJsonToFirebase(const String& path, FirebaseJson& nodeJson) {
   }
 }
 
+void updateLocData(int bedengan){
+  String bedenganPath = "/" + String(id) + "/Data/bedengan" + String(bedengan);
+  if (Firebase.RTDB.pathExisted(&fbdo, bedenganPath)){
+    String latitudePath = bedenganPath + "/latitude";
+    String longitudePath = bedenganPath + "/longitude";
+    if (Firebase.RTDB.getDouble(&fbdo, latitudePath)) {
+        nodeKapal[bedengan].Latitude = fbdo.doubleData();
+        nodeData[bedengan][0].Latitude = fbdo.doubleData();
+        Serial.print("Bedengan ");
+        Serial.print(bedengan);
+        Serial.print(" Latitude: ");
+        Serial.println(nodeKapal[bedengan].Latitude, 6);
+    }
+    if (Firebase.RTDB.getDouble(&fbdo, longitudePath)) {
+        nodeKapal[bedengan].Longitude = fbdo.doubleData();
+        nodeData[bedengan][0].Longitude = fbdo.doubleData();
+        Serial.print("Bedengan ");
+        Serial.print(bedengan);
+        Serial.print(" Longitude: ");
+        Serial.println(nodeKapal[bedengan].Longitude, 6);
+    }
+  }
+}
 
 void retrieveLocationData() {
-  for (int i = 1; i < MAX_NODES; i++) {
+  for (int i = 1; i <= MAX_NODES; i++) {
+    Serial.print("Memeriksa data ke: ");
+    Serial.println(i);
     String bedenganPath = "/" + String(id) + "/Data/bedengan" + String(i);
     if (Firebase.RTDB.pathExisted(&fbdo, bedenganPath)){
       String latitudePath = bedenganPath + "/latitude";
@@ -903,20 +953,32 @@ void retrieveLocationData() {
       bool isLongitudeAvailable = Firebase.RTDB.getDouble(&fbdo, longitudePath);
       if (Firebase.RTDB.getDouble(&fbdo, latitudePath)) {
           nodeKapal[i].Latitude = fbdo.doubleData();
+          nodeData[i][0].Latitude = fbdo.doubleData();
           Serial.print("Bedengan ");
           Serial.print(i);
           Serial.print(" Latitude: ");
           Serial.println(nodeKapal[i].Latitude, 6);
+      }else {
+        Serial.print("Bedengan ");
+        Serial.print(i);
+        Serial.println(" Latitude not available.");
       }
       if (Firebase.RTDB.getDouble(&fbdo, longitudePath)) {
           nodeKapal[i].Longitude = fbdo.doubleData();
+          nodeData[i][0].Longitude = fbdo.doubleData();
           Serial.print("Bedengan ");
           Serial.print(i);
           Serial.print(" Longitude: ");
           Serial.println(nodeKapal[i].Longitude, 6);
+      }else {
+        Serial.print("Bedengan ");
+        Serial.print(i);
+        Serial.println(" Longitude not available.");
       }
+    }else {
+      Serial.println("Path does not exist: " + bedenganPath);
     }
-    vTaskDelay(pdMS_TO_TICKS(50)); // Memberi cukup waktu untuk task lain dan mengurangi beban CPU
+    vTaskDelay(pdMS_TO_TICKS(10)); // Memberi cukup waktu untuk task lain dan mengurangi beban CPU
   }
 }
 
@@ -955,17 +1017,26 @@ bool isDataAvailable() {
   return false;
 }
 
+void disableWDT() {
+  // Disable Core 0 WDT
+  esp_task_wdt_deinit();
+
+  // Disable Core 1 WDT
+  esp_task_wdt_deinit();
+}
 
 void setup() {
   Serial.begin(115200);
   pinMode(ind, OUTPUT);
   pinMode(buzz, OUTPUT);
-  SRF.setCorrectionFactor(1.035);
 
   // Set memori matrix
   memset(pairingMatrix, 0, sizeof(pairingMatrix));
   memset(nodeData, 0, sizeof(nodeData));
   memset(nodeKapal, 0, sizeof(nodeKapal));
+  
+  // Matikan Watchdog Timer
+  disableWDT();
 
   Serial.print("Server MAC Address: ");
   Serial.println(WiFi.macAddress());
@@ -1003,19 +1074,47 @@ void setup() {
   }
 
   // Tes data
-  for (int i = 1; i <= 4; ++i) {
-    nodeKapal[i].id = i;
-    Serial.println(nodeKapal[i].id);
-    nodeKapal[i].humidity = random(1, 100);
-    nodeKapal[i].temperature = random(25, 40);
-  }
+  // for (int i = 1; i <= 4; ++i) {
+  //   nodeKapal[i].id = i;
+  //   Serial.println(nodeKapal[i].id);
+  //   nodeKapal[i].humidity = random(1, 100);
+  //   nodeKapal[i].temperature = random(25, 40);
+  // }
   Serial.println("done");
   digitalWrite(ind, LOW);
-  xTaskCreate(processDataTask, "ProcessData", 50000, NULL, 3, NULL);
-  xTaskCreate(dataProcessingTask, "DataProcTask", 50000, NULL, 2, NULL);
-  xTaskCreate(avgData, "sendDaily", 50000, NULL, 1, NULL);
-  xTaskCreate(sensorUltra, "sensor ultrasonik", 50000, NULL, 1, NULL);
+
+  BaseType_t xReturned;
+  Serial.printf("Free heap size before creating tasks: %d bytes\n", xPortGetFreeHeapSize());
+  xReturned = xTaskCreate(processDataTask, "ProcessData", 30000, NULL, 1, NULL);
+  if (xReturned == pdPASS) {
+    Serial.println("Task processDataTask berhasil dibuat");
+  } else {
+    Serial.println("Task processDataTask gagal dibuat");
+  }
+
+  xReturned = xTaskCreate(dataProcessingTask, "DataProcTask", 30000, NULL, 1, NULL);
+  if (xReturned == pdPASS) {
+    Serial.println("Task dataProcessingTask berhasil dibuat");
+  } else {
+    Serial.println("Task dataProcessingTask gagal dibuat");
+  }
+
+  xReturned = xTaskCreate(avgData, "sendDaily", 50000, NULL, 1, NULL);
+  if (xReturned == pdPASS) {
+    Serial.println("Task avgData berhasil dibuat");
+  } else {
+    Serial.println("Task avgData gagal dibuat");
+  }
+
+  xReturned = xTaskCreate(sensorUltra, "sensor ultrasonik", 5000, NULL, 3, NULL);
+  if (xReturned == pdPASS) {
+    Serial.println("Task sensorUltra berhasil dibuat");
+  } else {
+    Serial.println("Task sensorUltra gagal dibuat");
+  }
+  
   vTaskDelay(pdMS_TO_TICKS(500));
+  retrieveLocationData();
   digitalWrite(ind, HIGH);
 }
 
@@ -1026,14 +1125,21 @@ void loop() {
 
 void sensorUltra(void *parameter){
   for(;;){
-    int pipa = 200;
+    int pipa = 75;
     int y = SRF.getCentimeter();
     int kedalamanAir = pipa-y;
+    SRF.setSpeedOfSound(340);
+    Serial.printf("Jarak Sensor ke permukaan: %d\r\n", y);
     Serial.printf("kedalaman air: %d\r\n", kedalamanAir);
-    if (kedalamanAir <40){
+    if (kedalamanAir < 30){
+      n++;
+    }
+    if(n < 40 && kedalamanAir < 30){
       digitalWrite(buzz, HIGH);
-      vTaskDelay(pdMS_TO_TICKS(2000));
+      vTaskDelay(pdMS_TO_TICKS(500));
       digitalWrite(buzz, LOW);
+    }else if(n == 100){
+      n = 0;
     }
     vTaskDelay(pdMS_TO_TICKS(2000));
   }
@@ -1058,7 +1164,7 @@ void avgData(void *parameter) {
     } else {
       // Jika belum ada data, cek lagi dalam 10 menit
       Serial.printf("belum ada data\r\n");
-      vTaskDelay(pdMS_TO_TICKS(2000)); // Delay 10 menit
+      vTaskDelay(pdMS_TO_TICKS(60000)); // Delay 10 menit
     }
   }
 }
@@ -1073,10 +1179,7 @@ void processDataTask(void *parameter) {
         // Serial.println(bedengan);
         hitungAverage(bedengan);
         // displayAllNodeData();
-      } 
-      // else {
-      //   Serial.println("Invalid bedengan or node index");
-      // }
+      }
     }
     vTaskDelay(pdMS_TO_TICKS(200));
   }
@@ -1086,12 +1189,13 @@ void dataProcessingTask(void *params) {
   while (true) {
     struct_pairing data;
     if (xQueueReceive(antriKirim, &data, portMAX_DELAY)) {
+      Serial.println("Mengambil data lokasi");
       retrieveLocationData();
       strcpy(pairingData.id, "0");
       Serial.println("send response");
-      vTaskDelay(pdMS_TO_TICKS(1000));
       esp_now_send(pairingData.macAddr, (uint8_t *) &pairingData, sizeof(pairingData));
     }
     vTaskDelay(pdMS_TO_TICKS(200));
   }
 }
+
