@@ -916,6 +916,7 @@ void sendJsonToFirebase(const String& path, FirebaseJson& nodeJson) {
   }
 }
 
+//mengupdate data lokasi untuk pengiriman data lanjutan
 void updateLocData(int bedengan){
   String bedenganPath = "/" + String(id) + "/Data/bedengan" + String(bedengan);
   if (Firebase.RTDB.pathExisted(&fbdo, bedenganPath)){
@@ -1119,7 +1120,6 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
   server.handleClient();
 }
 
